@@ -412,7 +412,7 @@ function createObjective(){
 }
 function resetRivals(){state.combatRemaining=3;for(let i=0;i<rivals.length;i++){rivals[i].down=false;rivals[i].model.root.enabled=true}}
 function nearPoint(key,r=4){const p=state.inCar?state.inCar:SITE.start;const playerPosition=state.inCar?state.inCar:state.playerPos;return distance(playerPosition,SITE[key])<r}
-function nearestCar(radius=4.6){
+function nearestCar(radius=6.0){
   let nearest=null,best=radius;
   for(const car of cars){if(car.ai||car===state.inCar)continue;const d=distance(state.playerPos,car);if(d<best){best=d;nearest=car}}
   return nearest;
@@ -551,8 +551,16 @@ function movePlayer(dt,input){
   const vz=Math.cos(forward)*z+Math.cos(side)*x;
   const speed=input.sprint?8.3:4.6;
   const nx=state.playerPos.x+vx*speed*dt,nz=state.playerPos.z+vz*speed*dt;
-  if(navigable(nx,state.playerPos.z))state.playerPos.x=nx;
-  if(navigable(state.playerPos.x,nz))state.playerPos.z=nz;
+  // Solid parked-vehicle footprints: allow approaching a door, but not walking through the body.
+  const vehicleClear=(px,pz)=>cars.every(car=>{
+    const dx=px-car.x,dz=pz-car.z,angle=car.yaw*rad;
+    const lateral=dx*Math.cos(angle)-dz*Math.sin(angle);
+    const longitudinal=dx*Math.sin(angle)+dz*Math.cos(angle);
+    const scale=carTypes[car.kind]?.scale||1;
+    return Math.abs(lateral)>1.15*scale+.30 || Math.abs(longitudinal)>2.15*scale+.30;
+  });
+  if(navigable(nx,state.playerPos.z)&&vehicleClear(nx,state.playerPos.z))state.playerPos.x=nx;
+  if(navigable(state.playerPos.x,nz)&&vehicleClear(state.playerPos.x,nz))state.playerPos.z=nz;
   if(amount>.13){
     const target=Math.atan2(vx,vz)/rad;
     state.yaw+=deltaAngle(target,state.yaw)*Math.min(1,dt*11);
