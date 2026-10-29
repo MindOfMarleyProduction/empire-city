@@ -411,6 +411,61 @@ function createPeopleAndCars(){
     car.ai=true;car.police=true;car.root.enabled=false;police.push(car);
   }
 }
+// Build 3.0 Real Models: only a few instances are loaded to protect tablet performance.
+// If any GLB fails, its existing primitive remains visible and gameplay continues.
+function loadRealModel(path, onReady) {
+  app.assets.loadFromUrl('assets/' + path, 'container', (err, asset) => {
+    if (err || !asset?.resource) {console.warn('[Empire City] Model unavailable:',path,err);return;}
+    try {onReady(asset.resource);} catch (e) {console.warn('[Empire City] Asset setup failed:',path,e);}
+  });
+}
+function replaceWithRealModel(root, resource, scale, offset=[0,0,0], yaw=0) {
+  const model=resource.instantiateRenderEntity();
+  if (!model) return false;
+  model.name='Build 3.0 GLB';
+  model.setLocalScale(scale,scale,scale);
+  model.setLocalPosition(offset[0],offset[1],offset[2]);
+  model.setLocalEulerAngles(0,yaw,0);
+  const oldChildren=[...root.children];
+  root.addChild(model);
+  // Retain primitive hierarchy for fallback, but hide it only after successful GLB instantiation.
+  for(const child of oldChildren) child.enabled=false;
+  return true;
+}
+function enableRealModels(){
+  // Uploaded Nathan GLB is centimeter-scaled. Only three pedestrians initially use it.
+  loadRealModel('nathan_walking.glb',resource=>{
+    for(const citizen of people.slice(0,3)){
+      // Not a full skeletal animation player yet: the NPC path moves the imported model as a whole.
+      replaceWithRealModel(citizen.model.root,resource,.013,[0,.02,0],180);
+    }
+    message('NEW 3D PEDESTRIANS LOADED',2);
+  });
+  // This is the user's uploaded VW police transport GLB, not a new generated shape.
+  loadRealModel('police_transporter.glb',resource=>{
+    const targets=[...police];
+    const parkedVan=cars.find(c=>c.id==='P-2');if(parkedVan)targets.push(parkedVan);
+    for(const car of targets){
+      // root already has the vehicle scale; 0.75 brings the imported vehicle closer to the hitbox.
+      replaceWithRealModel(car.root,resource,.75,[.03,.012,.11],180);
+    }
+    message('NEW 3D VEHICLE LOADED',2);
+  });
+  loadRealModel('street_buildings.glb',resource=>{
+    // A detailed asset sits in one existing city block, not on a street.
+    const x=-105,z=-105;
+    let existing=null,closest=14;
+    for(const b of buildingGroups){let d=Math.hypot(b.x-x,b.z-z);if(d<closest){closest=d;existing=b}}
+    const root=group('Build 3.0 imported streetscape',x,z);
+    const model=resource.instantiateRenderEntity();
+    model.setLocalScale(.62,.62,.62);
+    model.setLocalPosition(0,.05,0);
+    root.addChild(model);
+    if(existing)existing.root.enabled=false;
+    buildingGroups.push({root,x,z});
+  });
+}
+
 function createObjective(){
   objective=group('Mission objective',0,0);
   objectiveRing=box(objective,'objective ring',0,.18,0,3.7,.14,3.7,allMaterials.gold,'cylinder');
@@ -1052,6 +1107,7 @@ async function init(){
   sun.setEulerAngles(55,25,0);app.root.addChild(sun);
   camera=new pc.Entity('Third-person camera');camera.addComponent('camera',{clearColor:new pc.Color(.42,.49,.60),farClip:395,nearClip:.12,fov:65});app.root.addChild(camera);
   createCity();createPeopleAndCars();createObjective();bindUI();applyQuality();
+  enableRealModels();
   window.addEventListener('resize',()=>app.resizeCanvas());
   app.start();
   app.on('update',rawDt=>{
