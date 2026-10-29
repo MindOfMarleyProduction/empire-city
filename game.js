@@ -219,6 +219,33 @@ function addBuilding(x,z,w,d,height,type,brand=false){
     box(parent,'aerial',0,height+1.9,0,.12,2,.12,allMaterials.gold,'cylinder');
   }
   if(brand){box(parent,'M.M.G. billboard',0,height*.71,d*.5+.2,w*.91,2.9,.13,signMaterial('M.M.G.','MIND OF MARLEY GAMES'))}
+  // Build 3.0 citywide facade upgrade: stronger silhouettes and repeated architectural details.
+  // Each building gets architectural trims rather than only a single rectangular box.
+  const trim = type%3===0 ? allMaterials.gold : type%3===1 ? allMaterials.metal : allMaterials.concrete;
+  const levels=Math.max(2,Math.min(8,Math.floor(height/4.6)));
+  for(let floor=1;floor<=levels;floor++){
+    const y=Math.min(height-.45,(floor-.35)*height/(levels+.35));
+    if(y<3.6)continue;
+    // Horizontal cornices also hide the previous flat wall silhouette.
+    box(parent,'facade belt '+floor,0,y,0,w+.20,.12,d+.20,trim);
+  }
+  // More varied rooftop profile, substantial enough to read from street level.
+  if(type%3===0){
+    box(parent,'roof parapet front',0,height+.55,d/2,w+.18,1.1,.35,trim);
+    box(parent,'roof parapet rear',0,height+.55,-d/2,w+.18,1.1,.35,trim);
+  } else if(type%3===1) {
+    box(parent,'rooftop equipment',-w*.21,height+.9,0,w*.31,1.55,d*.37,allMaterials.metal);
+    box(parent,'roof vent',w*.22,height+.4,0,w*.24,.8,d*.2,allMaterials.dark);
+  } else {
+    box(parent,'entry column L',-w*.43,1.7,d*.5+.33,.32,3.4,.46,trim);
+    box(parent,'entry column R',w*.43,1.7,d*.5+.33,.32,3.4,.46,trim);
+    box(parent,'entrance canopy',0,3.58,d*.5+.75,w*.87,.22,1.42,trim);
+  }
+  // Vertical corner accents convey scale without hundreds of individual window meshes.
+  for(const edge of [-1,1]){
+    box(parent,'corner pilaster front',edge*w*.485,height*.50,d*.50+.07,.16,height,.16,trim);
+    box(parent,'corner pilaster back',edge*w*.485,height*.50,-d*.50-.07,.16,height,.16,trim);
+  }
   addCollider(x,z,w+.3,d+.3);
   buildingGroups.push({root:parent,x,z});
 }
@@ -452,17 +479,31 @@ function enableRealModels(){
     message('NEW 3D VEHICLE LOADED',2);
   });
   loadRealModel('street_buildings.glb',resource=>{
-    // A detailed asset sits in one existing city block, not on a street.
-    const x=-105,z=-105;
-    let existing=null,closest=14;
-    for(const b of buildingGroups){let d=Math.hypot(b.x-x,b.z-z);if(d<closest){closest=d;existing=b}}
-    const root=group('Build 3.0 imported streetscape',x,z);
-    const model=resource.instantiateRenderEntity();
-    model.setLocalScale(.62,.62,.62);
-    model.setLocalPosition(0,.05,0);
-    root.addChild(model);
-    if(existing)existing.root.enabled=false;
-    buildingGroups.push({root,x,z});
+    // The uploaded model's measured footprint is ~18 x 24 x 8m.
+    // Spread it across the grid, including near spawn, rather than in one remote block.
+    const blocks=[[-21,-21],[21,-21],[-63,-21],[63,-21],[-105,-21],
+      [-21,-63],[21,-63],[-63,-63],[63,-63],[105,-63],
+      [-21,63],[21,63],[-63,63],[63,63],[-105,63],[105,63]];
+    let placed=0;
+    for(const [x,z] of blocks){
+      const root=group('Real 3D streetscape '+placed,x,z);
+      const model=resource.instantiateRenderEntity();
+      if(!model){root.destroy();continue}
+      // Original model is 18x24m and only 8m tall. Use its original size,
+      // ensuring buildings don't swallow neighboring roads.
+      model.setLocalScale(1,1,1);
+      model.setLocalPosition(1,0,2);
+      model.setLocalEulerAngles(0,(placed%4)*90,0);
+      root.addChild(model);
+      // Hide the four placeholders belonging to that city block.
+      // Keep their collision zones for now, so existing missions remain safe.
+      for(const b of buildingGroups){
+        if(Math.abs(b.x-x)<14 && Math.abs(b.z-z)<14){b.root.enabled=false;b.replacedByGLB=true;}
+      }
+      buildingGroups.push({root,x,z,realAsset:true});placed++;
+    }
+    message(placed+' REAL 3D BUILDING BLOCKS LOADED',4);
+    console.info('[Empire City] Distributed real GLB city blocks:',placed);
   });
 }
 
@@ -731,7 +772,7 @@ function updateVisibility(dt){
   const range=prefs.quality==='high'?250:prefs.quality==='balanced'?168:113;
   const rangeSq=range*range;
   for(const b of buildingGroups){
-    const dx=b.x-p.x,dz=b.z-p.z;b.root.enabled=dx*dx+dz*dz<rangeSq;
+    const dx=b.x-p.x,dz=b.z-p.z;b.root.enabled=!b.replacedByGLB && dx*dx+dz*dz<rangeSq;
   }
   for(const t of trees){const v=t.getPosition();const dx=v.x-p.x,dz=v.z-p.z;t.enabled=dx*dx+dz*dz<rangeSq}
   for(const l of lamps){const v=l.getPosition();const dx=v.x-p.x,dz=v.z-p.z;l.enabled=dx*dx+dz*dz<rangeSq}
