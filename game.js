@@ -313,6 +313,8 @@ function createHuman(name,x,z,style='MARLEY',variant=0){
   }
   box(root,'chin beard',0,2.12,.16,.34,.12,.17,hair);
   box(root,'hair top',0,2.68,-.015,.56,.21,.48,hair,'sphere');
+  box(root,'shirt collar left',-.18,1.98,.223,.20,.11,.05,allMaterials.white);
+  box(root,'shirt collar right',.18,1.98,.223,.20,.11,.05,allMaterials.white);
   if(style==='MARLEY'){
     for(let i=0;i<6;i++){
       const a=(i/6)*Math.PI*2;
@@ -341,6 +343,9 @@ function createCar(x,z,kind='SEDAN',color='blue',id='',parked=true){
   const scale=data.scale;v.setLocalScale(scale,scale,scale);
   box(v,'steel chassis',0,.65,0,2.05,.62,4.2,paint);
   box(v,'front hood',0,.94,1.43,1.96,.13,1.18,paint);
+  // Subtle mobile-friendly decorative geometry and color variation.
+  box(v,'hood centerline',0,1.02,1.47,.045,.015,1.08,allMaterials.metal);
+  box(v,'front splitter',0,.28,2.20,1.94,.075,.20,allMaterials.dark);
   const roof=box(v,'sloped cabin',0,1.26,-.35,1.75,.74,2.16,allMaterials.glass);
   roof.setLocalEulerAngles(-5,0,0);
   box(v,'top roof',0,1.65,-.40,1.68,.11,1.63,paint);
@@ -360,6 +365,8 @@ function createCar(x,z,kind='SEDAN',color='blue',id='',parked=true){
     box(v,'taillight',side*.67,.80,-2.19,.50,.17,.07,allMaterials.red);
     box(v,'side mirror',side*1.06,1.29,.43,.19,.16,.32,paint);
     box(v,'door handle',side*1.04,1.02,-.52,.06,.06,.37,allMaterials.metal);
+    box(v,'side skirt',side*1.04,.39,-.2,.08,.12,2.22,allMaterials.dark);
+    box(v,'wheel hub',side*1.29,.43,1.35,.05,.15,.15,allMaterials.gold,'cylinder').setLocalEulerAngles(0,0,90);
   }
   if(kind==='SPORT'){box(v,'rear spoiler',0,1.1,-2.04,2.17,.14,.42,allMaterials.dark)}
   if(kind==='TRUCK'){box(v,'truck bed',0,1.2,-1.65,2.12,.5,1.3,paint)}
@@ -459,8 +466,9 @@ function interact(){
     }
     missionStepAdvance();return;
   }
-  if(distance(state.playerPos,SITE.garage)<5.4){openGarage();return}
-  const near=nearestCar();
+  // Prefer nearby vehicle entry over garage menu when both are in range.
+  const near=nearestCar(7.0);
+  if(!near&&distance(state.playerPos,SITE.garage)<5.4){openGarage();return}
   if(near){state.inCar=near;state.inCar.speed=0;state.playerPos={x:near.x,z:near.z};player.enabled=false;camHeading=near.yaw;message(near.kind+' ENTERED',1.1);if(step?.type==='enterCar')missionStepAdvance();return}
   if(distance(state.playerPos,SITE.shop)<5){openShop();return}
   if(distance(state.playerPos,SITE.business)<5&&state.businesses.includes('business')){
@@ -588,7 +596,8 @@ function moveCar(dt,input){
   v.yaw-=input.x*stats.turn*dt*clamp(Math.abs(v.speed)/6,0,1.5)*(v.speed>=0?1:-1); // Correct reversed steering
   const heading=v.yaw*rad;
   const nextX=v.x+Math.sin(heading)*v.speed*dt,nextZ=v.z+Math.cos(heading)*v.speed*dt;
-  if(navigable(nextX,nextZ,1.55*stats.scale)){
+  const vehicleBlocked=cars.some(other=>other!==v&&distance({x:nextX,z:nextZ},other)<(1.7*stats.scale+1.7*carTypes[other.kind].scale));
+  if(navigable(nextX,nextZ,1.55*stats.scale)&&!vehicleBlocked){
     v.x=nextX;v.z=nextZ;
   }else if(Math.abs(v.speed)>3){
     v.damage=clamp(v.damage+.09,0,3);
@@ -598,28 +607,30 @@ function moveCar(dt,input){
   v.root.setPosition(v.x,0,v.z);v.root.setEulerAngles(0,v.yaw,0);
   for(const wheel of v.wheels)wheel.rotateLocal(0,dt*v.speed*30,0);
   state.playerPos={x:v.x,z:v.z};
-  for(const traffic of cars){
-    if(!traffic.ai||traffic.police)continue;
-    if(distance(v,traffic)<2.7&&Math.abs(v.speed)>3){
-      v.speed*=-.28;v.damage+=.03;
-      if(state.elapsed-state.damageTimer>2){increaseWanted(1);message('TRAFFIC ACCIDENT • POLICE DISPATCHED',2.3);state.damageTimer=state.elapsed}
-    }
-  }
+
 }
 function updateTraffic(dt){
+  // AI traffic yields to the player and neighboring cars instead of ghosting through them.
+  // Lightweight overlap avoidance (not a full rigid-body physics simulation).
   for(const v of cars){
     if(!v.ai||v.police||!v.path)continue;
-    if(state.active&&distance(v,state.playerPos)>145){v.root.enabled=false}else v.root.enabled=true;
+    v.root.enabled=!(state.active&&distance(v,state.playerPos)>145);
     const a=v.path[v.seg],b=v.path[(v.seg+1)%v.path.length];
     const length=Math.max(1,distance(a,b));
-    v.t+=dt*v.cruise/length;
-    if(v.t>=1){v.t-=1;v.seg=(v.seg+1)%v.path.length;}
-    const start=v.path[v.seg],end=v.path[(v.seg+1)%v.path.length];
-    v.x=lerp(start.x,end.x,v.t);v.z=lerp(start.z,end.z,v.t);
+    const advance=dt*v.cruise/length;
+    let nextSeg=v.seg,nextT=v.t+advance;
+    if(nextT>=1){nextT-=1;nextSeg=(nextSeg+1)%v.path.length}
+    const start=v.path[nextSeg],end=v.path[(nextSeg+1)%v.path.length];
+    const nx=lerp(start.x,end.x,nextT),nz=lerp(start.z,end.z,nextT);
+    const blockedByPlayer=!!(state.inCar&&state.inCar!==v&&distance({x:nx,z:nz},state.inCar)<(2.2*carTypes[v.kind].scale+2.2*carTypes[state.inCar.kind].scale));
+    const blockedByCars=cars.some(other=>other!==v&&distance({x:nx,z:nz},other)<(1.8*carTypes[v.kind].scale+1.8*carTypes[other.kind].scale));
+    if(blockedByPlayer||blockedByCars)continue;
+    v.seg=nextSeg;v.t=nextT;v.x=nx;v.z=nz;
     v.yaw=Math.atan2(end.x-start.x,end.z-start.z)/rad;
     v.root.setPosition(v.x,0,v.z);v.root.setEulerAngles(0,v.yaw,0);
   }
 }
+
 let cullClock=0;
 function updateVisibility(dt){
   cullClock+=dt;if(cullClock<.75)return;cullClock=0;
