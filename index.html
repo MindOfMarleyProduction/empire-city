@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#090d14">
+  <title>EMPIRE CITY — Mind of Marley Games</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">{"imports":{"playcanvas":"https://cdn.jsdelivr.net/npm/playcanvas@2.23.3/+esm"}}</script>
+</head>
+<body>
+  <canvas id="application" aria-label="Empire City 3D world"></canvas>
+  <div id="grain" aria-hidden="true"></div>
+  <div id="loading"><div class="logo">EMPIRE <span>CITY</span></div><div class="loader-line"></div><p>LOADING THE CITY...</p></div>
+  <div id="error" class="hidden" role="alert"></div>
+  <section id="main-menu" class="menu-screen hidden">
+    <div class="menu-topline">MIND OF MARLEY GAMES <b>•</b> ORIGINAL OPEN-WORLD ADVENTURE</div>
+    <h1>EMPIRE<br><span>CITY</span></h1>
+    <p class="subtitle">BUILD A NAME. CONTROL YOUR DESTINY.</p>
+    <div class="menu-contents">
+      <div class="menu-buttons">
+        <button id="new-game" class="primary">NEW STORY</button>
+        <button id="continue-game">CONTINUE STORY</button>
+        <button id="free-roam">FREE ROAM</button>
+        <button id="characters">CHARACTER SELECT</button>
+        <button id="settings">SETTINGS</button>
+        <button id="controls">CONTROLS</button>
+      </div>
+      <div class="menu-info"><strong>THE CITY IS YOURS</strong><p>Four districts. Twelve story missions. Cars, commerce, police pursuits, and the rise of M.M.G.</p><small>BUILD 2.0 • BROWSER EDITION</small></div>
+    </div>
+    <footer>© 2026 MIND OF MARLEY GAMES <span>GAMES BEYOND LIMITS</span></footer>
+  </section>
+  <main id="hud" class="hidden">
+    <header class="hud-top">
+      <div class="hud-logo">EMPIRE <b>CITY</b><span id="district">DOWNTOWN</span></div>
+      <div class="stats"><div class="stat-cash">$<span id="cash">0</span></div><div class="stat-health"><span>HEALTH</span><div class="bar"><div id="health-bar"></div></div></div><div id="stars" aria-label="Wanted level"></div></div>
+      <button id="pause" class="icon-button" aria-label="Pause">Ⅱ</button>
+    </header>
+    <aside class="mission-panel"><small>STORY CAMPAIGN <span id="mission-number">01 / 12</span></small><strong id="mission-name">WELCOME TO EMPIRE CITY</strong><p id="mission-objective">Follow the objective marker.</p><div id="objective-distance">DISTANCE —</div></aside>
+    <div class="map-frame"><canvas id="minimap" width="220" height="220" aria-label="City minimap"></canvas><div class="map-footer"><span id="clock">16:30</span> <span id="area">MIDTOWN</span></div></div>
+    <div id="top-right"><div id="weapon-display">FISTS</div><div id="speed-display" class="hidden">0 <small>MPH</small></div></div>
+    <div id="message" class="hidden" role="status"></div>
+    <div id="interaction-hint">FOLLOW THE GOLD MARKER</div>
+    <div id="touch-layer">
+      <div id="stick-zone" aria-label="Move or steer"><div id="stick-base"><div id="stick-dot"></div></div></div>
+      <div class="touch-buttons">
+        <button id="run-btn" class="t-button" aria-label="Sprint or accelerate">RUN</button>
+        <button id="jump-btn" class="t-button" aria-label="Jump or brake">JUMP</button>
+        <button id="use-btn" class="t-button accent" aria-label="Interact">USE</button>
+        <button id="attack-btn" class="t-button danger" aria-label="Attack">HIT</button>
+      </div>
+    </div>
+    <div class="bottom-actions"><button id="map-btn">MAP / MISSIONS</button><button id="radio-btn">♫ RADIO: OFF</button></div>
+  </main>
+  <section id="dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="dialog-card"><h2 id="dialog-title"></h2><div id="dialog-body"></div><button id="dialog-close" class="primary">CLOSE</button></div></section>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
