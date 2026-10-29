@@ -546,7 +546,7 @@ function readInputs(){
 }
 function movePlayer(dt,input){
   let {x,z}=input;const amount=Math.hypot(x,z);if(amount>1){x/=amount;z/=amount}
-  const forward=camHeading*rad,side=forward+Math.PI/2;
+  const forward=camHeading*rad,side=forward-Math.PI/2; // Correct screen-left and screen-right movement
   const vx=Math.sin(forward)*z+Math.sin(side)*x;
   const vz=Math.cos(forward)*z+Math.cos(side)*x;
   const speed=input.sprint?8.3:4.6;
@@ -577,7 +577,7 @@ function moveCar(dt,input){
   if(brake)v.speed*=Math.pow(.80,dt*30);
   v.speed=clamp(v.speed,-stats.max*.4,stats.max*(1-v.damage*.12));
   if(Math.abs(v.speed)<.15&&Math.abs(throttle)<.1)v.speed=0;
-  v.yaw+=input.x*stats.turn*dt*clamp(Math.abs(v.speed)/6,0,1.5)*(v.speed>=0?1:-1);
+  v.yaw-=input.x*stats.turn*dt*clamp(Math.abs(v.speed)/6,0,1.5)*(v.speed>=0?1:-1); // Correct reversed steering
   const heading=v.yaw*rad;
   const nextX=v.x+Math.sin(heading)*v.speed*dt,nextZ=v.z+Math.cos(heading)*v.speed*dt;
   if(navigable(nextX,nextZ,1.55*stats.scale)){
@@ -711,7 +711,7 @@ function updateCamera(dt,lookX=0,lookY=0){
     camera.lookAt(0,14,0);return;
   }
   if(state.inCar){
-    const target=(state.inCar.yaw+180)%360;
+    const target=state.inCar.yaw; // Follow behind the vehicle
     if(Math.abs(lookX)<.01)camHeading+=deltaAngle(target,camHeading)*Math.min(1,dt*1.1);
   }
   camHeading+=lookX*95*dt;
@@ -724,7 +724,7 @@ function updateCamera(dt,lookX=0,lookY=0){
   const targetX=position.x-Math.sin(viewAngle)*range;
   const targetZ=position.z-Math.cos(viewAngle)*range;
   const targetY=elevation+Math.sin(camPitch*rad)*range*.62+(state.inCar?0:state.moveY);
-  const old=camera.getPosition();const easing=Math.min(1,dt*6);
+  const old=camera.getPosition();const easing=1-Math.exp(-5.5*dt); // Smooth across frame rates
   camera.setPosition(lerp(old.x,targetX,easing),lerp(old.y,targetY,easing),lerp(old.z,targetZ,easing));
   camera.lookAt(aimX,1.55+(state.inCar?0:state.moveY),aimZ);
 }
@@ -956,7 +956,7 @@ function bindUI(){
   canvas.onpointerdown=e=>{if(e.pointerType==='mouse'&&e.button!==0)return;look.id=e.pointerId;look.lastX=e.clientX;look.lastY=e.clientY;canvas.setPointerCapture(e.pointerId)};
   canvas.onpointermove=e=>{if(e.pointerId!==look.id||!state.active||state.paused)return;
     const dx=clamp(e.clientX-look.lastX,-55,55),dy=clamp(e.clientY-look.lastY,-40,40);
-    camHeading-=dx*.38;camPitch=clamp(camPitch+dy*.25,-8,58);look.lastX=e.clientX;look.lastY=e.clientY;
+    camHeading+=dx*.38;camPitch=clamp(camPitch+dy*.25,-8,58);look.lastX=e.clientX;look.lastY=e.clientY;
   };
   canvas.onpointerup=()=>{look.id=null};canvas.onpointercancel=()=>{look.id=null};
   document.addEventListener('keydown',e=>{
