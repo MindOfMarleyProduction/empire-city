@@ -447,15 +447,43 @@ function missionStepAdvance(){
   if(currentStep()?.type==='heat'){increaseWanted(2);state.step++;message('POLICE ALERT • LOSE YOUR WANTED LEVEL',4)}
   saveGame();mark();
 }
+function outsideVehicle(px,pz,except=null,margin=.40){
+  for(const car of cars){
+    if(car===except)continue;
+    const dx=px-car.x,dz=pz-car.z,a=car.yaw*rad;
+    const side=dx*Math.cos(a)-dz*Math.sin(a);
+    const front=dx*Math.sin(a)+dz*Math.cos(a);
+    const scale=carTypes[car.kind]?.scale||1;
+    if(Math.abs(side)<1.1*scale+margin && Math.abs(front)<2.15*scale+margin)return false;
+  }
+  return true;
+}
+function findSafeExit(car){
+  const s=carTypes[car.kind]?.scale||1;
+  const yaw=car.yaw*rad;
+  for(const radius of [2.15*s,2.9*s,3.7*s,5*s,7*s]){
+    for(const angle of [Math.PI/2,-Math.PI/2,Math.PI,-Math.PI/4,Math.PI/4,0,3*Math.PI/4,-3*Math.PI/4]){
+      const x=car.x+Math.sin(yaw+angle)*radius;
+      const z=car.z+Math.cos(yaw+angle)*radius;
+      if(navigable(x,z,.5)&&outsideVehicle(x,z,car,.47))return {x,z,recovered:false};
+    }
+  }
+  for(const spot of [SITE.start,SITE.contact,SITE.garage,SITE.plaza]){
+    if(navigable(spot.x,spot.z,.5)&&outsideVehicle(spot.x,spot.z,null,.45))return {...spot,recovered:true};
+  }
+  return {...SITE.start,recovered:true};
+}
 function interact(){
   if(!state.active||state.paused)return;
   soundAction();
   if(state.inCar){
-    const car=state.inCar;const side=2.8,dx=Math.cos(car.yaw*rad)*side,dz=-Math.sin(car.yaw*rad)*side;
-    let p={x:car.x+dx,z:car.z+dz};if(!navigable(p.x,p.z)){p={x:car.x-dx,z:car.z-dz}}
-    if(!navigable(p.x,p.z)){message('NOT ENOUGH ROOM TO EXIT',1.5);return}
-    state.inCar=null;state.playerPos=p;player.enabled=true;
-    player.setPosition(p.x,0,p.z);car.speed=0;message('EXITED VEHICLE',1);
+    const car=state.inCar;
+    const p=findSafeExit(car);
+    // Emergency recovery is preferable to trapping the player forever.
+    state.inCar=null;state.playerPos={x:p.x,z:p.z};player.enabled=true;
+    state.moveY=0;state.vy=0;
+    player.setPosition(p.x,0,p.z);car.speed=0;message(p.recovered?'PLAYER RECOVERED • SAFE POSITION':'EXITED VEHICLE',1.8);
+    saveGame();
     return;
   }
   const step=currentStep(),at=step&&SITE[step.at],here=at&&distance(state.playerPos,at)<5;
@@ -559,16 +587,26 @@ function movePlayer(dt,input){
   const vz=Math.cos(forward)*z+Math.cos(side)*x;
   const speed=input.sprint?8.3:4.6;
   const nx=state.playerPos.x+vx*speed*dt,nz=state.playerPos.z+vz*speed*dt;
-  // Solid parked-vehicle footprints: allow approaching a door, but not walking through the body.
-  const vehicleClear=(px,pz)=>cars.every(car=>{
-    const dx=px-car.x,dz=pz-car.z,angle=car.yaw*rad;
-    const lateral=dx*Math.cos(angle)-dz*Math.sin(angle);
-    const longitudinal=dx*Math.sin(angle)+dz*Math.cos(angle);
-    const scale=carTypes[car.kind]?.scale||1;
-    return Math.abs(lateral)>1.15*scale+.30 || Math.abs(longitudinal)>2.15*scale+.30;
-  });
-  if(navigable(nx,state.playerPos.z)&&vehicleClear(nx,state.playerPos.z))state.playerPos.x=nx;
-  if(navigable(state.playerPos.x,nz)&&vehicleClear(state.playerPos.x,nz))state.playerPos.z=nz;
+  // A previously overlapping car must never immobilize the player.
+  const canMove=(px,pz)=>{
+    if(!navigable(px,pz))return false;
+    for(const car of cars){
+      const a=car.yaw*rad,scale=carTypes[car.kind]?.scale||1;
+      const overlap=(x,z)=>{
+        const dx=x-car.x,dz=z-car.z;
+        return Math.abs(dx*Math.cos(a)-dz*Math.sin(a))<1.1*scale+.3 &&
+               Math.abs(dx*Math.sin(a)+dz*Math.cos(a))<2.15*scale+.3;
+      };
+      if(!overlap(px,pz))continue;
+      if(!overlap(state.playerPos.x,state.playerPos.z))return false;
+      const oldDist=Math.hypot(state.playerPos.x-car.x,state.playerPos.z-car.z);
+      const newDist=Math.hypot(px-car.x,pz-car.z);
+      if(newDist+.005<oldDist)return false;
+    }
+    return true;
+  };
+  if(canMove(nx,state.playerPos.z))state.playerPos.x=nx;
+  if(canMove(state.playerPos.x,nz))state.playerPos.z=nz;
   if(amount>.13){
     const target=Math.atan2(vx,vz)/rad;
     state.yaw+=deltaAngle(target,state.yaw)*Math.min(1,dt*11);
@@ -841,7 +879,7 @@ function beginGame(mode='new'){
     state.time=saved.time||16.5;state.character=characterStyles[saved.character]?saved.character:'MARLEY';
     state.businesses=Array.isArray(saved.businesses)?saved.businesses:[];
     state.ownedVehicles=Array.isArray(saved.ownedVehicles)?saved.ownedVehicles:[];
-    state.playerPos=saved.playerPos&&navigable(saved.playerPos.x,saved.playerPos.z)?saved.playerPos:{...SITE.start};
+    state.playerPos=saved.playerPos&&navigable(saved.playerPos.x,saved.playerPos.z)&&outsideVehicle(saved.playerPos.x,saved.playerPos.z)?saved.playerPos:{...SITE.start};
   }else{
     state.mission=0;state.step=0;state.money=2500;state.health=100;state.businesses=[];state.ownedVehicles=[];
     state.playerPos={...SITE.start};state.time=16.5;
