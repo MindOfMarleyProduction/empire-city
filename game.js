@@ -419,9 +419,17 @@ function createPeopleAndCars(){
   for(let i=0;i<20;i++){
     const type=pick(['SEDAN','SEDAN','SUV','COUPE','MUSCLE','TRUCK'],i*7);
     const colors=['black','white','blue','gold','red','green'];
-    const car=createCar(0,0,type,pick(colors,i*3+Math.floor(i/5)),'TRAFFIC-'+i,false);
-    car.ai=true;car.path=flowPaths[i%flowPaths.length];car.seg=i%4;car.t=(i*.193)%1;
-    car.cruise=8+(i%5)*1.5;
+    // Spread vehicles around four complete routes; no more spawning every car at (0,0).
+    const route=flowPaths[i%flowPaths.length];
+    const segment=Math.floor(i/4)%4;
+    const fraction=.11 + (Math.floor(i/16)*.44);
+    const start=route[segment],end=route[(segment+1)%route.length];
+    const spawnX=lerp(start.x,end.x,fraction),spawnZ=lerp(start.z,end.z,fraction);
+    const car=createCar(spawnX,spawnZ,type,pick(colors,i*3+Math.floor(i/5)),'TRAFFIC-'+i,false);
+    car.ai=true;car.path=route;car.seg=segment;car.t=fraction;
+    car.yaw=Math.atan2(end.x-start.x,end.z-start.z)/rad;
+    car.root.setEulerAngles(0,car.yaw,0);
+    car.cruise=7.5+(i%4)*.7;
   }
   for(let i=0;i<43;i++){
     const cx=BLOCKS[i%6],cz=BLOCKS[Math.floor(i/6)%6],angle=(i*2.18)%6.28;
@@ -460,13 +468,13 @@ function replaceWithRealModel(root, resource, scale, offset=[0,0,0], yaw=0) {
   return true;
 }
 function enableRealModels(){
-  // Uploaded Nathan GLB is centimeter-scaled. Only three pedestrians initially use it.
+  // The actual Nathan GLB is about 1.87 m tall at 0.01 scale; use on 16 NPCs.
   loadRealModel('nathan_walking.glb',resource=>{
-    for(const citizen of people.slice(0,3)){
+    for(const citizen of people.slice(0,16)){
       // Not a full skeletal animation player yet: the NPC path moves the imported model as a whole.
-      replaceWithRealModel(citizen.model.root,resource,.013,[0,.02,0],180);
+      replaceWithRealModel(citizen.model.root,resource,.010,[0,.02,0],180);
     }
-    message('NEW 3D PEDESTRIANS LOADED',2);
+    message('16 REAL 3D PEDESTRIANS LOADED',3);
   });
   // This is the user's uploaded VW police transport GLB, not a new generated shape.
   loadRealModel('police_transporter.glb',resource=>{
@@ -744,23 +752,33 @@ function moveCar(dt,input){
 
 }
 function updateTraffic(dt){
-  // AI traffic yields to the player and neighboring cars instead of ghosting through them.
-  // Lightweight overlap avoidance (not a full rigid-body physics simulation).
+  // Order-independent road traffic. Cars spawn on separate route points and
+  // slow near a vehicle in front, without becoming welded together.
+  const snapshot=cars.filter(v=>v.ai&&!v.police&&v.path).map(v=>({ref:v,x:v.x,z:v.z}));
   for(const v of cars){
     if(!v.ai||v.police||!v.path)continue;
     v.root.enabled=!(state.active&&distance(v,state.playerPos)>145);
     const a=v.path[v.seg],b=v.path[(v.seg+1)%v.path.length];
     const length=Math.max(1,distance(a,b));
-    const advance=dt*v.cruise/length;
-    let nextSeg=v.seg,nextT=v.t+advance;
+    const step=dt*v.cruise/length;
+    let nextSeg=v.seg,nextT=v.t+step;
     if(nextT>=1){nextT-=1;nextSeg=(nextSeg+1)%v.path.length}
     const start=v.path[nextSeg],end=v.path[(nextSeg+1)%v.path.length];
     const nx=lerp(start.x,end.x,nextT),nz=lerp(start.z,end.z,nextT);
-    const blockedByPlayer=!!(state.inCar&&state.inCar!==v&&distance({x:nx,z:nz},state.inCar)<(2.2*carTypes[v.kind].scale+2.2*carTypes[state.inCar.kind].scale));
-    const blockedByCars=cars.some(other=>other!==v&&distance({x:nx,z:nz},other)<(1.8*carTypes[v.kind].scale+1.8*carTypes[other.kind].scale));
-    if(blockedByPlayer||blockedByCars)continue;
+    const heading=Math.atan2(end.x-start.x,end.z-start.z);
+    const forwardX=Math.sin(heading),forwardZ=Math.cos(heading);
+    const others=[...snapshot.filter(s=>s.ref!==v),...cars.filter(c=>!c.ai).map(c=>({ref:c,x:c.x,z:c.z}))];
+    if(state.inCar)others.push({ref:state.inCar,x:state.inCar.x,z:state.inCar.z});
+    let danger=false;
+    for(const other of others){
+      const dx=other.x-v.x,dz=other.z-v.z;
+      const ahead=dx*forwardX+dz*forwardZ;
+      const lateral=Math.abs(dx*forwardZ-dz*forwardX);
+      if(ahead>-.3&&ahead<6.8&&lateral<2.5){danger=true;break}
+    }
+    if(danger)continue;
     v.seg=nextSeg;v.t=nextT;v.x=nx;v.z=nz;
-    v.yaw=Math.atan2(end.x-start.x,end.z-start.z)/rad;
+    v.yaw=heading/rad;
     v.root.setPosition(v.x,0,v.z);v.root.setEulerAngles(0,v.yaw,0);
   }
 }
